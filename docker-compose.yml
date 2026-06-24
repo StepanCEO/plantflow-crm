@@ -23,8 +23,8 @@ services:
       - .env
     environment:
       DJANGO_DEBUG: "0"
-      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
-      DJANGO_CSRF_TRUSTED_ORIGINS: "http://localhost:8000,http://127.0.0.1:8000"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0,crm.lsgarden.ru"
+      DJANGO_CSRF_TRUSTED_ORIGINS: "http://localhost:8000,http://127.0.0.1:8000,https://crm.lsgarden.ru"
       POSTGRES_DB: plant_crm
       POSTGRES_USER: plant_crm
       POSTGRES_PASSWORD: plant_crm
@@ -36,5 +36,20 @@ services:
       db:
         condition: service_healthy
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
