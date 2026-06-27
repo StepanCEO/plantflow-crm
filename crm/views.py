@@ -9,9 +9,10 @@ from datetime import date, datetime, timedelta
 import boto3
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.mail import send_mail
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -163,42 +164,85 @@ def _log_action(request, action, before='', after=''):
     )
 
 
+def _generate_code():
+    return str(random.randint(100000, 999999))
+
+
+def _lookup_user_by_email(email):
+    user = User.objects.filter(email__iexact=email).first()
+    if user:
+        return user
+    profile = EmployeeProfile.objects.filter(work_email__iexact=email).select_related('user').first()
+    if profile:
+        return profile.user
+    return None
+
+
+def _send_code_email(email, code):
+    send_mail(
+        subject='Код входа в PlantFlow CRM',
+        message=f'Ваш код для входа: {code}\n\nКод действителен 5 минут.',
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[email],
+        fail_silently=False,
+    )
+
+
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('crm:dashboard')
 
     error = None
-    if request.method == 'POST':
-        username = request.POST.get('username', '').strip()
-        password = request.POST.get('password', '').strip()
-        code = request.POST.get('code', '').strip()
-        user = authenticate(request, username=username, password=password)
-        if user is None:
-            error = 'Неверный логин или пароль.'
-        else:
-            profile = getattr(user, 'profile', None)
-            if user.is_staff or user.is_superuser:
-                login(request, user)
-                _log_action(request, 'Login admin', before='anonymous', after=user.username)
-                return redirect('crm:dashboard')
-            if profile and profile.access_code == code:
-                login(request, user)
-                _log_action(request, 'Login employee', before='anonymous', after=user.username)
-                return redirect('crm:dashboard')
-            error = 'Для сотрудника нужен корректный код из почты.'
+    code_sent = request.session.get('login_email')
 
-    demo_users = User.objects.select_related('profile').filter(username__in=['admin', 'front', 'hybrid', 'back', 'content', 'locomotive'])
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+
+        if action == 'send_code':
+            email = request.POST.get('email', '').strip().lower()
+            user = _lookup_user_by_email(email)
+            if not user:
+                error = 'Пользователь с таким email не найден.'
+            else:
+                code = _generate_code()
+                request.session['login_code'] = code
+                request.session['login_email'] = email
+                request.session['login_expiry'] = (timezone.now() + timedelta(minutes=5)).isoformat()
+                try:
+                    _send_code_email(email, code)
+                    code_sent = email
+                except Exception as e:
+                    error = f'Ошибка отправки письма: {e}'
+
+        elif action == 'verify_code':
+            input_code = request.POST.get('code', '').strip()
+            stored_code = request.session.get('login_code')
+            stored_email = request.session.get('login_email')
+            expiry_str = request.session.get('login_expiry')
+
+            if not stored_code or not stored_email or not expiry_str:
+                error = 'Сначала запросите код.'
+            elif input_code != stored_code:
+                error = 'Неверный код.'
+            elif timezone.now() > timezone.datetime.fromisoformat(expiry_str):
+                error = 'Код истёк. Запросите новый.'
+                request.session.pop('login_code', None)
+                request.session.pop('login_expiry', None)
+            else:
+                user = _lookup_user_by_email(stored_email)
+                if user:
+                    login(request, user)
+                    _log_action(request, 'Login by code', before='anonymous', after=user.username)
+                    request.session.pop('login_code', None)
+                    request.session.pop('login_email', None)
+                    request.session.pop('login_expiry', None)
+                    return redirect('crm:dashboard')
+                error = 'Пользователь не найден.'
+
     return render(request, 'crm/login.html', {
         **_base_context(request),
         'error': error,
-        'demo_credentials': [
-            {'username': 'admin', 'password': 'admin123', 'code': 'не нужен'},
-            {'username': 'front', 'password': 'front123', 'code': '246810'},
-            {'username': 'hybrid', 'password': 'hybrid123', 'code': '246810'},
-            {'username': 'back', 'password': 'back123', 'code': '246810'},
-            {'username': 'content', 'password': 'content123', 'code': '246810'},
-            {'username': 'locomotive', 'password': 'drive123', 'code': '246810'},
-        ],
+        'code_sent': code_sent,
     })
 
 
@@ -219,6 +263,8 @@ def dashboard(request):
             'send_message': _send_message,
             'sync_1c': _sync_1c,
             'poll_avito': _poll_avito,
+            'poll_vk': _poll_vk,
+            'poll_tg': _poll_tg,
             'sync_bank': _sync_bank,
             'create_user': _create_user,
             'update_user': _update_user,
@@ -641,6 +687,40 @@ def _poll_avito(request):
         messages.info(request, 'Авито: новых писем нет.')
     else:
         messages.warning(request, f'Авито: {msg}')
+    return redirect(f"{reverse('crm:dashboard')}?page=products")
+
+
+
+def _poll_vk(request):
+    from .vk_integration import poll_vk_messages
+    result = poll_vk_messages()
+    status = result.get('status', 'error')
+    imported = result.get('imported', 0)
+    msg = result.get('message', '')
+    if status == 'ok' and imported > 0:
+        messages.success(request, f'VK: импортировано {imported} сообщений.')
+        _log_action(request, 'Poll VK', before='vk', after=f'{imported} messages imported')
+    elif status == 'ok':
+        messages.info(request, 'VK: новых сообщений нет.')
+    else:
+        messages.warning(request, f'VK: {msg}')
+    return redirect(f"{reverse('crm:dashboard')}?page=products")
+
+
+
+def _poll_tg(request):
+    from .tg_integration import poll_tg_messages
+    result = poll_tg_messages()
+    status = result.get('status', 'error')
+    imported = result.get('imported', 0)
+    msg = result.get('message', '')
+    if status == 'ok' and imported > 0:
+        messages.success(request, f'Telegram: импортировано {imported} сообщений.')
+        _log_action(request, 'Poll TG', before='telegram', after=f'{imported} messages imported')
+    elif status == 'ok':
+        messages.info(request, 'Telegram: новых сообщений нет.')
+    else:
+        messages.warning(request, f'Telegram: {msg}')
     return redirect(f"{reverse('crm:dashboard')}?page=products")
 
 

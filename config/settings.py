@@ -183,6 +183,22 @@ AVITO_EMAIL_PORT = int(os.getenv('AVITO_EMAIL_PORT', '993'))
 AVITO_EMAIL_USER = os.getenv('AVITO_EMAIL_USER', '')
 AVITO_EMAIL_PASSWORD = os.getenv('AVITO_EMAIL_PASSWORD', '')
 
+# Email (SMTP)
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.yandex.ru')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = bool(int(os.getenv('EMAIL_USE_TLS', '1')))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@crm.lsgarden.ru')
+
+# Telegram Bot
+TG_BOT_TOKEN = os.getenv('TG_BOT_TOKEN', '')
+TG_GROUP_ID = os.getenv('TG_GROUP_ID', '')
+
+# VK API
+VK_API_TOKEN = os.getenv('VK_API_TOKEN', '')
+VK_GROUP_ID = os.getenv('VK_GROUP_ID', '')
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_URL = 'crm:login'
 LOGIN_REDIRECT_URL = 'crm:dashboard'

@@ -10,7 +10,7 @@
         Единое окно для входящих сообщений, клиентов, склада, скриптов, обучения и аналитики.
       </p>
       <div class="feature-grid">
-        <div class="feature"><strong>Авторизация</strong> Логин и пароль для администратора. Для сотрудников нужен код из почты.</div>
+        <div class="feature"><strong>Авторизация</strong> Вход по коду на почту. Без паролей.</div>
         <div class="feature"><strong>Омниканал</strong> Telegram, VK, WhatsApp, Email, сайт, Flowwow и Авито.</div>
         <div class="feature"><strong>Автоматизация</strong> Скрипты, follow-up, триггеры по остаткам и быстрый тест знаний.</div>
         <div class="feature"><strong>Контроль</strong> Логирование, тайм-трекинг, блокировка аномалий и роли доступа.</div>
@@ -18,29 +18,36 @@
     </div>
   </section>
   <section class="auth-panel">
+    {% if not code_sent %}
     <form class="login-card card" method="post">
       {% csrf_token %}
       <h2>Вход в систему</h2>
-      <p class="section-desc">Используйте демо-аккаунты ниже, чтобы сразу открыть CRM.</p>
+      <p class="section-desc">Введите рабочую почту — на неё придёт код для входа.</p>
       {% if error %}<div class="ghost-box" style="margin: 12px 0; color: var(--danger);">{{ error }}</div>{% endif %}
       <div class="field">
-        <label for="username">Логин</label>
-        <input id="username" name="username" autocomplete="username" placeholder="admin / front / hybrid" required>
+        <label for="email">Рабочая почта</label>
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="user@example.com" required autofocus>
       </div>
-      <div class="field">
-        <label for="password">Пароль</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" placeholder="admin123" required>
-      </div>
-      <div class="field">
-        <label for="code">Код сотрудника</label>
-        <input id="code" name="code" inputmode="numeric" placeholder="246810">
-      </div>
-      <div class="row">
-        <button class="btn primary" type="submit">Войти</button>
-        <a class="btn" href="{% url 'crm:dashboard' %}">На дашборд</a>
-      </div>
-      <div class="divider"></div>
+      <input type="hidden" name="action" value="send_code">
+      <button class="btn primary" type="submit" style="width:100%;">Отправить код</button>
     </form>
+    {% else %}
+    <form class="login-card card" method="post">
+      {% csrf_token %}
+      <h2>Введите код</h2>
+      <p class="section-desc">Код отправлен на <strong>{{ code_sent }}</strong></p>
+      {% if error %}<div class="ghost-box" style="margin: 12px 0; color: var(--danger);">{{ error }}</div>{% endif %}
+      <div class="field">
+        <label for="code">Код из письма</label>
+        <input id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" placeholder="000000" required autofocus>
+      </div>
+      <input type="hidden" name="action" value="verify_code">
+      <input type="hidden" name="email" value="{{ code_sent }}">
+      <button class="btn primary" type="submit" style="width:100%;">Войти</button>
+      <div class="divider"></div>
+      <button class="btn" type="submit" name="action" value="send_code" style="width:100%;">Отправить код повторно</button>
+    </form>
+    {% endif %}
   </section>
 </div>
 {% endblock %}

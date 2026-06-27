@@ -635,6 +635,16 @@
               </form>
               <form method="post">
                 {% csrf_token %}
+                <input type="hidden" name="action" value="poll_vk">
+                <button class="btn" type="submit">VK</button>
+              </form>
+              <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="poll_tg">
+                <button class="btn" type="submit">Telegram</button>
+              </form>
+              <form method="post">
+                {% csrf_token %}
                 <input type="hidden" name="action" value="export_products_csv">
                 <button class="btn" type="submit">Экспорт CSV</button>
               </form>
